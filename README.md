@@ -1,1 +1,1 @@
-For a full write-up, see kbrooks.ca/posts/loadbalancing
+For a full write-up, see https://www.kbrooks.ca/posts/loadbalancing
