@@ -59,6 +59,7 @@ void BalanceLoad(std::vector<Computer> &Computers, std::vector<Block> &Blocks)
 std::cout << "Processing device type " << Computers[Comp_ID].Devices[Dev_ID].type << "\n"; //debuginfo
 		while (time_tmp < Time_Average && ID < Blocks.size()) { //could stagger this by computer ID (avoid under-subscribing)
 			time_tmp += Blocks[ID].t_compute_ns / Computers[Comp_ID].Devices[Dev_ID].Factor;
+			Blocks[ID].t_compute_ns /= Computers[Comp_ID].Devices[Dev_ID].Factor;
 			ID += 1;
 		}
 std::cout << "Last block: " << Blocks[ID-1].t_compute_ns / Computers[Comp_ID].Devices[Dev_ID].Factor << "\n"; //debuginfo
@@ -118,6 +119,35 @@ int main(int, char**)
 	}
 	Computers.back().Devices.back().ID_End = Blocks.size();
 
+	// Estimate compute time (not accounting for latency)
+	std::vector<long unsigned> GPU_Times_Naive, CPU_Times_Naive;
+	// find max compute time for devices marked 'G'
+	unsigned CPU_INDEX = 0, GPU_INDEX = 0;
+	for (unsigned i = 0; i != Computers.size(); i++) {
+		for (unsigned j = 0; j != Computers[i].Devices.size(); j++) {
+			for (unsigned k = Computers[i].Devices[j].ID_Start; k != Computers[i].Devices[j].ID_End; k++) {
+				if (Computers[i].Devices[j].type == 'G') {
+					if (GPU_Times_Naive.size() <= GPU_INDEX) {
+						GPU_Times_Naive.push_back(Blocks[k].t_compute_ns);
+					} else {
+						GPU_Times_Naive[GPU_INDEX] += Blocks[k].t_compute_ns;
+					}
+				} else if (Computers[i].Devices[j].type == 'C') {
+					if (CPU_Times_Naive.size() <= CPU_INDEX) {
+						CPU_Times_Naive.push_back(Blocks[k].t_compute_ns);
+					} else {
+						CPU_Times_Naive[CPU_INDEX] += Blocks[k].t_compute_ns;
+					}
+				}
+			}
+			if (Computers[i].Devices[j].type == 'G') GPU_INDEX += 1;
+			if (Computers[i].Devices[j].type == 'C') CPU_INDEX += 1;
+		}
+	}
+	long unsigned t_gpu_max_naive, t_cpu_max_naive;
+	t_gpu_max_naive = *std::max_element(GPU_Times_Naive.begin(), GPU_Times_Naive.end());
+	t_cpu_max_naive = *std::max_element(CPU_Times_Naive.begin(), CPU_Times_Naive.end());
+
 	//NOTE: WE DO NOT COMPUTE THE TOTAL TIME SINCE WE HAVEN'T ACCOUNTED FOR LATENCY YET!
 	for (unsigned i = 0; i != Computers.size(); i++) {
 		std::cout << "Computer (" << i << ")\n";
@@ -132,5 +162,37 @@ int main(int, char**)
 			std::cout << "\t" << "(" << Computers[i].Devices[j].type << ")" << Computers[i].Devices[j].ID_Start << "--" << Computers[i].Devices[j].ID_End << "\n";
 		}
 	}
-	//It would be nice to print the longest compute time for the un-sorted case and compare, but there's cake afoot.
+
+	std::vector<long unsigned> GPU_Times, CPU_Times;
+	// find max compute time for devices marked 'G'
+	CPU_INDEX = 0, GPU_INDEX = 0;
+	for (unsigned i = 0; i != Computers.size(); i++) {
+		for (unsigned j = 0; j != Computers[i].Devices.size(); j++) {
+			for (unsigned k = Computers[i].Devices[j].ID_Start; k != Computers[i].Devices[j].ID_End; k++) {
+				if (Computers[i].Devices[j].type == 'G') {
+					if (GPU_Times.size() <= GPU_INDEX) {
+						GPU_Times.push_back(Blocks[k].t_compute_ns);
+					} else {
+						GPU_Times[GPU_INDEX] += Blocks[k].t_compute_ns;
+					}
+				} else if (Computers[i].Devices[j].type == 'C') {
+					if (CPU_Times.size() <= CPU_INDEX) {
+						CPU_Times.push_back(Blocks[k].t_compute_ns);
+					} else {
+						CPU_Times[CPU_INDEX] += Blocks[k].t_compute_ns;
+					}
+				}
+			}
+			if (Computers[i].Devices[j].type == 'G') GPU_INDEX += 1;
+			if (Computers[i].Devices[j].type == 'C') CPU_INDEX += 1;
+		}
+	}
+	long unsigned t_gpu_max, t_cpu_max;
+	t_gpu_max = *std::max_element(GPU_Times.begin(), GPU_Times.end());
+	t_cpu_max = *std::max_element(CPU_Times.begin(), CPU_Times.end());
+
+	std::cout << "Naive approach: \n\tWall time per step: " << std::max(t_gpu_max_naive, t_cpu_max_naive) << "\n";
+	std::cout << "Balanced approach: \n\tWall time per step: " << std::max(t_gpu_max, t_cpu_max) << "\n";
+	std::cout << "----------------------------------";
+	std::cout << "Speedup: " << static_cast<double>(std::max(t_gpu_max_naive, t_cpu_max_naive)) / static_cast<double>(std::max(t_gpu_max, t_cpu_max)) << "\n";
 }
